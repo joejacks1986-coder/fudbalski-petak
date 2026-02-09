@@ -7,7 +7,8 @@ export const metadata: Metadata = {
   title: "Fudbal Petak",
   description: "Mečevi, statistika, Miljanov ugao i galerija.",
   icons: {
-    icon: "/icon.png",
+    icon: "/favicon-v2.ico",
+    shortcut: "/favicon-v2.ico",
     apple: "/apple-icon.png",
   },
 };
