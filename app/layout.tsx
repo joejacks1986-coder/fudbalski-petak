@@ -6,6 +6,10 @@ import Image from "next/image";
 export const metadata: Metadata = {
   title: "Fudbal Petak",
   description: "Mečevi, statistika, Miljanov ugao i galerija.",
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
+  },
 };
 
 function NavLink({ href, label }: { href: string; label: string }) {
