@@ -12,6 +12,7 @@ type MatchRow = {
 };
 
 type MediaType = "image" | "video";
+type SourceType = "UPLOAD" | "YOUTUBE";
 
 function formatDateSr(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("sr-RS", {
@@ -21,6 +22,41 @@ function formatDateSr(dateStr: string) {
   });
 }
 
+function extractYouTubeId(url: string): string | null {
+  try {
+    const u = new URL(url);
+
+    // youtu.be/<id>
+    if (u.hostname.includes("youtu.be")) {
+      const id = u.pathname.replace("/", "").trim();
+      return id || null;
+    }
+
+    // youtube.com/watch?v=<id>
+    if (u.hostname.includes("youtube.com")) {
+      const v = u.searchParams.get("v");
+      if (v) return v;
+
+      // youtube.com/embed/<id>
+      const parts = u.pathname.split("/").filter(Boolean);
+      const embedIndex = parts.indexOf("embed");
+      if (embedIndex >= 0 && parts[embedIndex + 1]) return parts[embedIndex + 1];
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function ytThumb(id: string) {
+  return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+}
+
+function ytEmbed(id: string) {
+  return `https://www.youtube-nocookie.com/embed/${id}`;
+}
+
 export default function AdminGalerijaNew() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -28,10 +64,18 @@ export default function AdminGalerijaNew() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [matchId, setMatchId] = useState<string>("");
-  const [mediaType, setMediaType] = useState<MediaType>("image");
 
+  // NOVO: izvor sadržaja
+  const [source, setSource] = useState<SourceType>("UPLOAD");
+
+  // upload polja
+  const [mediaType, setMediaType] = useState<MediaType>("image");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
+
+  // youtube polja
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [youtubeId, setYoutubeId] = useState<string | null>(null);
 
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(true);
@@ -61,7 +105,7 @@ export default function AdminGalerijaNew() {
     loadMatches();
   }, []);
 
-  // Preview
+  // Preview za upload
   useEffect(() => {
     if (!file) {
       setPreviewUrl("");
@@ -71,6 +115,20 @@ export default function AdminGalerijaNew() {
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  // YouTube ID iz URL-a (live)
+  useEffect(() => {
+    if (source !== "YOUTUBE") return;
+
+    const trimmed = youtubeUrl.trim();
+    if (!trimmed) {
+      setYoutubeId(null);
+      return;
+    }
+
+    const id = extractYouTubeId(trimmed);
+    setYoutubeId(id);
+  }, [youtubeUrl, source]);
 
   const acceptAttr = useMemo(() => {
     return mediaType === "image" ? "image/*" : "video/*";
@@ -125,10 +183,78 @@ export default function AdminGalerijaNew() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const switchSource = (next: SourceType) => {
+    setError(null);
+    setSource(next);
+
+    if (next === "UPLOAD") {
+      // ništa spec
+    } else {
+      // YouTube mode: očisti upload state da ne zbunjuje
+      clearFile();
+      setMediaType("video"); // YouTube je uvek video
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
+    // ==============
+    // YOUTUBE MODE
+    // ==============
+    if (source === "YOUTUBE") {
+      const url = youtubeUrl.trim();
+      if (!url) {
+        setError("Unesi YouTube link.");
+        return;
+      }
+
+      const id = extractYouTubeId(url);
+      if (!id) {
+        setError("Ne mogu da prepoznam YouTube ID iz linka. Probaj standardni YouTube URL.");
+        return;
+      }
+
+      setSaving(true);
+      try {
+        const { error: dbError } = await supabase.from("gallery_items").insert({
+          title: title.trim() || null,
+          description: description.trim() || null,
+          media_type: "video", // youtube je video
+          source: "YOUTUBE",
+          youtube_url: url,
+          youtube_id: id,
+          // upload polja (NULL)
+          file_path: null,
+          public_url: null,
+          match_id: matchId || null,
+        });
+
+        if (dbError) throw dbError;
+
+        alert("YouTube video je uspešno dodat u galeriju ✅");
+        router.push("/admin/utakmice");
+      }  catch (err: any) {
+  console.error("YT INSERT ERROR:", err);
+  const msg =
+    err?.message ||
+    err?.error_description ||
+    err?.details ||
+    err?.hint ||
+    "Nepoznata greška.";
+  setError(`Greška pri upisu YouTube linka: ${msg}`);
+
+      } finally {
+        setSaving(false);
+      }
+
+      return;
+    }
+
+    // ==============
+    // UPLOAD MODE (postojeće)
+    // ==============
     if (!file) {
       setError("Moraš izabrati fajl (sliku ili snimak).");
       return;
@@ -180,6 +306,11 @@ export default function AdminGalerijaNew() {
         file_path: filePath,
         public_url: publicUrl,
         match_id: matchId || null,
+
+        // NOVO
+        source: "UPLOAD",
+        youtube_url: null,
+        youtube_id: null,
       });
 
       if (dbError) throw dbError;
@@ -201,7 +332,7 @@ export default function AdminGalerijaNew() {
         <div className="titleBlock">
           <h1 className="h1">Dodaj u galeriju</h1>
           <div className="sub">
-            Upload slike/video snimka, opciono veži za meč, i gotovo. Jedna stavka – jedan dokaz.
+            Upload slike/video snimka ili dodaj YouTube link, opciono veži za meč, i gotovo.
           </div>
         </div>
 
@@ -221,112 +352,204 @@ export default function AdminGalerijaNew() {
       <form onSubmit={handleSubmit} className="grid2">
         {/* LEVO */}
         <div className="col">
-          {/* FILE PANEL */}
+          {/* SOURCE PANEL */}
           <section className="panel">
             <div className="panelHead">
               <div>
-                <h2 className="h2">Fajl</h2>
-                <div className="hint">Možeš kliknuti da izabereš ili prevući fajl u zonu.</div>
+                <h2 className="h2">Izvor</h2>
+                <div className="hint">Biraš da li je sadržaj upload ili YouTube link.</div>
               </div>
 
               <div className="miniRow">
                 <label className="miniLabel">
-                  <span className="miniCap">Tip</span>
+                  <span className="miniCap">Izvor</span>
                   <select
                     className="select"
-                    value={mediaType}
-                    onChange={(e) => setMediaType(e.target.value as MediaType)}
+                    value={source}
+                    onChange={(e) => switchSource(e.target.value as SourceType)}
                     disabled={saving}
                   >
-                    <option value="image">Slika</option>
-                    <option value="video">Video</option>
+                    <option value="UPLOAD">Upload (fajl)</option>
+                    <option value="YOUTUBE">YouTube (link)</option>
                   </select>
                 </label>
               </div>
             </div>
 
-            <div
-              className={`drop ${dragOver ? "over" : ""}`}
-              onDragEnter={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={onDrop}
-              onClick={() => fileInputRef.current?.click()}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
-              }}
-              aria-label="Zona za upload fajla"
-              title="Klikni ili prevuci fajl"
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={acceptAttr}
-                onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
-                className="fileInput"
-                disabled={saving}
-              />
+            {source === "YOUTUBE" ? (
+              <div className="fields">
+                <label className="label">
+                  <span className="cap">YouTube link</span>
+                  <input
+                    className="input"
+                    value={youtubeUrl}
+                    onChange={(e) => setYoutubeUrl(e.target.value)}
+                    disabled={saving}
+                    placeholder="npr. https://www.youtube.com/watch?v=..."
+                  />
+                  <span className="note">
+                    Podržano: youtube.com/watch?v=..., youtu.be/..., youtube.com/embed/...
+                  </span>
+                </label>
 
-              {!file ? (
-                <div className="dropInner">
-                  <div className="dropIcon">⬆</div>
-                  <div className="dropTitle">Klikni ili prevuci fajl</div>
-                  <div className="dropSub">
-                    Podržano: <strong>{mediaType === "image" ? "slike" : "video"}</strong> • max 50MB
-                  </div>
-                </div>
-              ) : (
-                <div className="fileRow">
-                  <div className="fileMeta">
-                    <div className="fileName">{fileMeta?.name}</div>
-                    <div className="fileSub">
-                      {fileMeta?.type} • {fileMeta?.size}
+                {youtubeId ? (
+                  <div className="preview" style={{ marginTop: 0 }}>
+                    <div className="previewHead">
+                      <div className="previewTitle">Pregled</div>
+                      <div className="previewChip">▶ YouTube</div>
+                    </div>
+
+                    <div className="previewStage">
+                      <iframe
+                        className="previewMedia"
+                        src={ytEmbed(youtubeId)}
+                        title="YouTube preview"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        style={{ border: 0 }}
+                      />
+                    </div>
+
+                    <div style={{ padding: "10px 12px", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                      <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
+                        Detektovan ID: <span style={{ fontWeight: 1100, opacity: 0.95 }}>{youtubeId}</span>
+                      </div>
+                      <div style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center" }}>
+                        <img
+                          src={ytThumb(youtubeId)}
+                          alt="YouTube thumbnail"
+                          style={{
+                            width: 160,
+                            borderRadius: 12,
+                            border: "1px solid rgba(255,255,255,0.12)",
+                            boxShadow: "0 10px 26px rgba(0,0,0,0.18)",
+                          }}
+                        />
+                        <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, lineHeight: 1.5 }}>
+                          Thumbnail dolazi sa YouTube-a automatski.
+                        </div>
+                      </div>
                     </div>
                   </div>
-
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      clearFile();
-                    }}
-                    disabled={saving}
-                    title="Ukloni fajl"
-                  >
-                    Ukloni
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {previewUrl && (
-              <div className="preview">
-                <div className="previewHead">
-                  <div className="previewTitle">Pregled</div>
-                  <div className="previewChip">
-                    {mediaType === "image" ? "🖼️ Slika" : "🎬 Video"}
+                ) : youtubeUrl.trim() ? (
+                  <div className="errorBox" style={{ marginTop: 0 }}>
+                    ⚠ Ne mogu da prepoznam YouTube ID iz ovog linka.
                   </div>
-                </div>
-
-                <div className="previewStage">
-                  {mediaType === "image" ? (
-                    <img src={previewUrl} alt="Preview" className="previewMedia" />
-                  ) : (
-                    <video src={previewUrl} controls className="previewMedia" />
-                  )}
-                </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="hint" style={{ marginTop: 2 }}>
+                Izabran je <strong>Upload</strong> — koristi zonu ispod za fajl.
               </div>
             )}
           </section>
+
+          {/* FILE PANEL (samo upload) */}
+          {source === "UPLOAD" && (
+            <section className="panel">
+              <div className="panelHead">
+                <div>
+                  <h2 className="h2">Fajl</h2>
+                  <div className="hint">Možeš kliknuti da izabereš ili prevući fajl u zonu.</div>
+                </div>
+
+                <div className="miniRow">
+                  <label className="miniLabel">
+                    <span className="miniCap">Tip</span>
+                    <select
+                      className="select"
+                      value={mediaType}
+                      onChange={(e) => setMediaType(e.target.value as MediaType)}
+                      disabled={saving}
+                    >
+                      <option value="image">Slika</option>
+                      <option value="video">Video</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div
+                className={`drop ${dragOver ? "over" : ""}`}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={onDrop}
+                onClick={() => fileInputRef.current?.click()}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
+                }}
+                aria-label="Zona za upload fajla"
+                title="Klikni ili prevuci fajl"
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={acceptAttr}
+                  onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+                  className="fileInput"
+                  disabled={saving}
+                />
+
+                {!file ? (
+                  <div className="dropInner">
+                    <div className="dropIcon">⬆</div>
+                    <div className="dropTitle">Klikni ili prevuci fajl</div>
+                    <div className="dropSub">
+                      Podržano: <strong>{mediaType === "image" ? "slike" : "video"}</strong> • max 50MB
+                    </div>
+                  </div>
+                ) : (
+                  <div className="fileRow">
+                    <div className="fileMeta">
+                      <div className="fileName">{fileMeta?.name}</div>
+                      <div className="fileSub">
+                        {fileMeta?.type} • {fileMeta?.size}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearFile();
+                      }}
+                      disabled={saving}
+                      title="Ukloni fajl"
+                    >
+                      Ukloni
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {previewUrl && (
+                <div className="preview">
+                  <div className="previewHead">
+                    <div className="previewTitle">Pregled</div>
+                    <div className="previewChip">{mediaType === "image" ? "🖼️ Slika" : "🎬 Video"}</div>
+                  </div>
+
+                  <div className="previewStage">
+                    {mediaType === "image" ? (
+                      <img src={previewUrl} alt="Preview" className="previewMedia" />
+                    ) : (
+                      <video src={previewUrl} controls className="previewMedia" />
+                    )}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* DETAILS PANEL */}
           <section className="panel">
@@ -398,7 +621,11 @@ export default function AdminGalerijaNew() {
             <div className="panelHead">
               <div>
                 <h2 className="h2">Akcije</h2>
-                <div className="hint">Kad klikneš “Dodaj”, ide upload + upis u bazu.</div>
+                <div className="hint">
+                  {source === "UPLOAD"
+                    ? "Kad klikneš “Dodaj”, ide upload + upis u bazu."
+                    : "Kad klikneš “Dodaj”, upisuje se YouTube link u bazu (bez upload-a)."}
+                </div>
               </div>
             </div>
 
@@ -422,9 +649,19 @@ export default function AdminGalerijaNew() {
             <div className="tips">
               <div className="tipTitle">Brzi saveti</div>
               <ul className="tipList">
-                <li>Fajl &gt; 50MB neće proći (da admin ne plače).</li>
-                <li>Ako ubaciš video, tip se sam prebacuje na “Video”.</li>
-                <li>Naslov i opis su opcioni — ali galerija izgleda življe s njima.</li>
+                {source === "UPLOAD" ? (
+                  <>
+                    <li>Fajl &gt; 50MB neće proći (da admin ne plače).</li>
+                    <li>Ako ubaciš video, tip se sam prebacuje na “Video”.</li>
+                    <li>Naslov i opis su opcioni — ali galerija izgleda življe s njima.</li>
+                  </>
+                ) : (
+                  <>
+                    <li>YouTube link ne zauzima storage i ne košta upload.</li>
+                    <li>Najpouzdaniji format: <code>youtube.com/watch?v=...</code></li>
+                    <li>Naslov/opis su opcioni, ali pomažu da se zna “šta gledamo”.</li>
+                  </>
+                )}
               </ul>
             </div>
           </section>
@@ -439,13 +676,20 @@ export default function AdminGalerijaNew() {
 
             <div className="kv">
               <div className="kvRow">
-                <div className="kvKey">Fajl</div>
-                <div className="kvVal">{file ? "✅ izabran" : "—"}</div>
+                <div className="kvKey">Izvor</div>
+                <div className="kvVal">{source === "UPLOAD" ? "Upload" : "YouTube"}</div>
+              </div>
+
+              <div className="kvRow">
+                <div className="kvKey">{source === "UPLOAD" ? "Fajl" : "Link"}</div>
+                <div className="kvVal">
+                  {source === "UPLOAD" ? (file ? "✅ izabran" : "—") : youtubeId ? "✅ validan" : "—"}
+                </div>
               </div>
 
               <div className="kvRow">
                 <div className="kvKey">Tip</div>
-                <div className="kvVal">{mediaType === "image" ? "Slika" : "Video"}</div>
+                <div className="kvVal">{source === "YOUTUBE" ? "YouTube video" : mediaType === "image" ? "Slika" : "Video"}</div>
               </div>
 
               <div className="kvRow">

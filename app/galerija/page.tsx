@@ -4,14 +4,21 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
 
+type Source = "UPLOAD" | "YOUTUBE";
+
 type GalleryItem = {
   id: string;
   created_at: string;
   title: string | null;
   description: string | null;
   media_type: "image" | "video";
-  public_url: string;
+  public_url: string | null;
   match_id: string | null;
+
+  // novo:
+  source: Source | null;
+  youtube_url: string | null;
+  youtube_id: string | null;
 };
 
 function formatDateSr(dateStr: string) {
@@ -21,6 +28,13 @@ function formatDateSr(dateStr: string) {
     year: "numeric",
   });
 }
+
+const isYouTube = (item: GalleryItem) => (item.source || "UPLOAD") === "YOUTUBE";
+
+const ytThumb = (youtubeId: string) => `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`;
+
+const ytEmbed = (youtubeId: string) =>
+  `https://www.youtube.com/embed/${youtubeId}?autoplay=1&rel=0&modestbranding=1`;
 
 export default function GalerijaPage() {
   const [items, setItems] = useState<GalleryItem[]>([]);
@@ -64,7 +78,9 @@ export default function GalerijaPage() {
 
       const { data, error } = await supabase
         .from("gallery_items")
-        .select("id, created_at, title, description, media_type, public_url, match_id")
+        .select(
+          "id, created_at, title, description, media_type, public_url, match_id, source, youtube_url, youtube_id"
+        )
         .order("created_at", { ascending: false })
         .returns<GalleryItem[]>();
 
@@ -143,9 +159,19 @@ export default function GalerijaPage() {
               title="Otvori"
             >
               <div className="thumb">
-                {item.media_type === "image" ? (
+                {isYouTube(item) && item.youtube_id ? (
+                  <>
+                    <img
+                      src={ytThumb(item.youtube_id)}
+                      alt={item.title || "YouTube video"}
+                      className="thumb-media"
+                      loading="lazy"
+                    />
+                    <span className="play-badge">▶ YOUTUBE</span>
+                  </>
+                ) : item.media_type === "image" ? (
                   <img
-                    src={item.public_url}
+                    src={item.public_url || ""}
                     alt={item.title || "Slika"}
                     className="thumb-media"
                     loading="lazy"
@@ -153,7 +179,7 @@ export default function GalerijaPage() {
                 ) : (
                   <>
                     <video
-                      src={item.public_url}
+                      src={item.public_url || ""}
                       className="thumb-media"
                       muted
                       playsInline
@@ -167,7 +193,8 @@ export default function GalerijaPage() {
               <div className="card-body">
                 <div className="card-top">
                   <div className="card-title">
-                    {item.title || (item.media_type === "image" ? "Slika" : "Video")}
+                    {item.title ||
+                      (isYouTube(item) ? "YouTube video" : item.media_type === "image" ? "Slika" : "Video")}
                   </div>
                   <div className="card-date">{formatDateSr(item.created_at)}</div>
                 </div>
@@ -195,7 +222,12 @@ export default function GalerijaPage() {
               <div onClick={(e) => e.stopPropagation()} className="lb">
                 <div className="lb-head">
                   <div className="lb-title">
-                    {openItem.title || (openItem.media_type === "image" ? "Slika" : "Video")}
+                    {openItem.title ||
+                      (isYouTube(openItem)
+                        ? "YouTube video"
+                        : openItem.media_type === "image"
+                        ? "Slika"
+                        : "Video")}
                     <span className="lb-sub">
                       • {formatDateSr(openItem.created_at)}
                       {openItem.match_id ? ` • meč #${openItem.match_id}` : ""}
@@ -242,14 +274,23 @@ export default function GalerijaPage() {
                     ←
                   </button>
 
-                  {openItem.media_type === "image" ? (
+                  {isYouTube(openItem) && openItem.youtube_id ? (
+                    <div className="lb-embed">
+                      <iframe
+                        src={ytEmbed(openItem.youtube_id)}
+                        title={openItem.title || "YouTube video"}
+                        allow="autoplay; encrypted-media; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  ) : openItem.media_type === "image" ? (
                     <img
-                      src={openItem.public_url}
+                      src={openItem.public_url || ""}
                       alt={openItem.title || "Slika"}
                       className="lb-media"
                     />
                   ) : (
-                    <video src={openItem.public_url} controls autoPlay className="lb-media" />
+                    <video src={openItem.public_url || ""} controls autoPlay className="lb-media" />
                   )}
 
                   <button
@@ -406,7 +447,7 @@ export default function GalerijaPage() {
           align-items:center;
           justify-content:center;
           padding: 16px;
-          z-index: 2147483647; /* nuklearno iznad svega */
+          z-index: 2147483647;
         }
 
         .lb{
@@ -512,6 +553,22 @@ export default function GalerijaPage() {
           object-fit: contain;
           border-radius: 14px;
           background: rgba(255,255,255,0.06);
+        }
+
+        /* YouTube embed (responsive) */
+        .lb-embed{
+          width: 100%;
+          max-height: 72vh;
+          aspect-ratio: 16 / 9;
+          border-radius: 14px;
+          overflow: hidden;
+          background: rgba(255,255,255,0.06);
+        }
+        .lb-embed iframe{
+          width: 100%;
+          height: 100%;
+          border: 0;
+          display: block;
         }
 
         .stage-nav{
