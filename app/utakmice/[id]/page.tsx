@@ -361,7 +361,7 @@ export default async function UtakmicaPage({
                               a.name
                             )}
                           </div>
-                          <div className="val">🎯 {a.total}</div>
+                          <div className="val">🅰️ {a.total}</div>
                         </div>
                       ))}
                     </div>
@@ -388,7 +388,7 @@ export default async function UtakmicaPage({
                               a.name
                             )}
                           </div>
-                          <div className="val">🎯 {a.total}</div>
+                          <div className="val">🅰️ {a.total}</div>
                         </div>
                       ))}
                     </div>

@@ -171,7 +171,7 @@ export default async function IgracPage({ params }: PageProps) {
 
             <div className="chips">
               <span className="chip chip-amber">⚽ {totalStats.goals}</span>
-              <span className="chip chip-sky">🎯 {totalStats.assists}</span>
+              <span className="chip chip-sky">🅰️ {totalStats.assists}</span>
               <span className="chip chip-gold">🏆 {totalStats.mvps}</span>
             </div>
 
@@ -226,7 +226,7 @@ export default async function IgracPage({ params }: PageProps) {
 
                 <div className="match-right">
                   {s?.goals ? <span className="pill">⚽ {s.goals}</span> : null}
-                  {s?.assists ? <span className="pill">🎯 {s.assists}</span> : null}
+                  {s?.assists ? <span className="pill">🅰️ {s.assists}</span> : null}
                   {s?.mvp ? <span className="pill pill-mvp">🏆 MVP</span> : null}
                 </div>
               </Link>
