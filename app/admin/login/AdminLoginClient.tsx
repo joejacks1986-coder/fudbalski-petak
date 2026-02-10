@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -13,6 +13,22 @@ export default function AdminLoginClient() {
   const [err, setErr] = useState<string | null>(null);
 
   const next = sp.get("next") || "/admin/utakmice";
+
+  // ✅ Ako je već ulogovan, preskoči login stranicu i idi na "next"
+  useEffect(() => {
+    let alive = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
+      if (data.session?.user) {
+        window.location.assign(next);
+      }
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, [next]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
