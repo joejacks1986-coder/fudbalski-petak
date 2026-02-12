@@ -32,6 +32,7 @@ export default async function IgraciPage() {
       image_url
     `
     )
+    .eq("is_public", true)
     .order("name");
 
   if (error) {
