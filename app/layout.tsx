@@ -106,8 +106,9 @@ export default function RootLayout({
 
             <nav style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <NavLink href="/" label="POČETNA" />
-              <NavLink href="/utakmice" label="MEČEVI" />
               <NavLink href="/igraci" label="IGRAČI" />
+              <NavLink href="/utakmice" label="MEČEVI" />
+              <NavLink href="/nagrade" label="NAGRADE" />
               <NavLink href="/galerija" label="GALERIJA" />
             </nav>
           </div>
