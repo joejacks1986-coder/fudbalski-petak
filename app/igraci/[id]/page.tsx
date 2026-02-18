@@ -253,10 +253,10 @@ export default async function IgracPage({ params }: PageProps) {
   const years = listYears(safeAllMatches);
 
   for (const y of years) {
-    const { monthPeriods, quarterPeriods, yearPeriod } = listPeriodsForYear(safeAllMatches, y);
+    const { monthPeriods,  yearPeriod } = listPeriodsForYear(safeAllMatches, y);
 
     // redosled nije bitan za brojanje, ali je jasno:
-    const periods = [...monthPeriods, ...quarterPeriods, yearPeriod];
+    const periods = [...monthPeriods, yearPeriod];
 
     for (const p of periods) {
       const ids = matchIdsForPeriod(safeAllMatches, p);
