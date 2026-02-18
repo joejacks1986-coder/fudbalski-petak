@@ -38,7 +38,8 @@ type TeamRow = {
   } | null;
 };
 
-type PeriodMode = "month" | "quarter" | "year";
+// ✅ samo MESEC i GODINA
+type PeriodMode = "month" | "year";
 
 const MONTHS = [
   { value: "01", label: "Januar" },
@@ -55,13 +56,6 @@ const MONTHS = [
   { value: "12", label: "Decembar" },
 ];
 
-const QUARTERS = [
-  { value: "Q1", label: "Q1 (Jan–Mar)" },
-  { value: "Q2", label: "Q2 (Apr–Jun)" },
-  { value: "Q3", label: "Q3 (Jul–Sep)" },
-  { value: "Q4", label: "Q4 (Okt–Dec)" },
-];
-
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -70,24 +64,26 @@ function pct(n: number) {
   return `${Math.round(n * 100)}%`;
 }
 
-function quarterOfMonth(mo: string) {
-  const m = Number(mo);
-  if (m >= 1 && m <= 3) return "Q1";
-  if (m >= 4 && m <= 6) return "Q2";
-  if (m >= 7 && m <= 9) return "Q3";
-  return "Q4";
-}
-
-function formatPeriodLabel(mode: PeriodMode, year: string, month: string, quarter: string) {
+// ✅ bez quarter parametra
+function formatPeriodLabel(mode: PeriodMode, year: string, month: string) {
   const y = year === "all" ? "Sve godine" : year;
 
   if (mode === "year") return `${y} • Godina`;
-  if (mode === "quarter") return `${y} • ${quarter}`;
-  const m = month === "all" ? "Svi meseci" : MONTHS.find((x) => x.value === month)?.label || month;
+
+  const m =
+    month === "all"
+      ? "Svi meseci"
+      : MONTHS.find((x) => x.value === month)?.label || month;
+
   return `${y} • ${m}`;
 }
 
-type PlayerLite = { id: string; name: string; slug: string | null; image_url: string | null };
+type PlayerLite = {
+  id: string;
+  name: string;
+  slug: string | null;
+  image_url: string | null;
+};
 
 type Winner = PlayerLite & {
   value: number;
@@ -156,10 +152,14 @@ export default function NagradePage() {
   // filteri
   const [year, setYear] = useState<string>("all");
   const [month, setMonth] = useState<string>("all");
-  const [quarter, setQuarter] = useState<string>("Q1");
 
   // za “forma” nagradu
   const MIN_MATCHES_FOR_FORM = 3;
+
+  // ✅ mali UX: kad prebaciš na GODINU, mesec nema smisla
+  useEffect(() => {
+    if (mode === "year") setMonth("all");
+  }, [mode]);
 
   useEffect(() => {
     const load = async () => {
@@ -221,27 +221,27 @@ export default function NagradePage() {
     return Array.from(set).sort((a, b) => Number(b) - Number(a));
   }, [matches]);
 
+  // ✅ filtriranje samo za MESEC / GODINA
   const filteredMatches = useMemo(() => {
     return matches.filter((m) => {
       const d = new Date(m.date);
       const y = String(d.getFullYear());
       const mo = pad2(d.getMonth() + 1);
-      const q = quarterOfMonth(mo);
 
       if (year !== "all" && y !== year) return false;
 
+      // GODINA = sve u toj godini
       if (mode === "year") return true;
-      if (mode === "quarter") return q === quarter;
 
-      // mode === "month"
+      // MESEC
       if (month !== "all" && mo !== month) return false;
       return true;
     });
-  }, [matches, year, month, quarter, mode]);
+  }, [matches, year, month, mode]);
 
   const filteredMatchIds = useMemo(() => new Set(filteredMatches.map((m) => m.id)), [filteredMatches]);
 
-  const filterLabel = useMemo(() => formatPeriodLabel(mode, year, month, quarter), [mode, year, month, quarter]);
+  const filterLabel = useMemo(() => formatPeriodLabel(mode, year, month), [mode, year, month]);
 
   // ----- NAGRADE: GOALS / ASSISTS / MVP (svi pobednici na max)
   const awardsEvents = useMemo(() => {
@@ -457,7 +457,7 @@ export default function NagradePage() {
   }, [teams, events, filteredMatches, filteredMatchIds]);
 
   // =========================
-  //  NOVE NAGRADE (pored postojećih)
+  //  NAGRade
   // =========================
 
   // 1) Ironman = najviše odigranih
@@ -528,7 +528,7 @@ export default function NagradePage() {
     return getWinnersByMax(list, (x) => x.value);
   }, [playerStats]);
 
-  // 5) MVP/Meč (min 3 meča) — “uticaj”
+  // 5) MVP/Meč (min 3 meča)
   const awardMvpRate = useMemo(() => {
     const list: Winner[] = playerStats
       .filter((p) => p.played >= MIN_MATCHES_FOR_EFF)
@@ -547,7 +547,7 @@ export default function NagradePage() {
     return getWinnersByMax(list, (x) => x.value);
   }, [playerStats]);
 
-  // 6) Fair play: najmanje poraza (min 3 meča) — “ne gubi”
+  // 6) Najmanje poraza (min 3 meča)
   const awardLeastLosses = useMemo(() => {
     const list = playerStats
       .filter((p) => p.played >= MIN_MATCHES_FOR_EFF)
@@ -583,13 +583,21 @@ export default function NagradePage() {
 
         <div className="period-bar">
           <div className="tabs">
-            <button type="button" className={`tab ${mode === "month" ? "active" : ""}`} onClick={() => setMode("month")}>
+            <button
+              type="button"
+              className={`tab ${mode === "month" ? "active" : ""}`}
+              onClick={() => setMode("month")}
+            >
               MESEC
             </button>
-            <button type="button" className={`tab ${mode === "quarter" ? "active" : ""}`} onClick={() => setMode("quarter")}>
-              KVARTAL
-            </button>
-            <button type="button" className={`tab ${mode === "year" ? "active" : ""}`} onClick={() => setMode("year")}>
+
+            {/* ✅ uklonjen KVARTAL */}
+
+            <button
+              type="button"
+              className={`tab ${mode === "year" ? "active" : ""}`}
+              onClick={() => setMode("year")}
+            >
               GODINA
             </button>
           </div>
@@ -597,6 +605,12 @@ export default function NagradePage() {
           <div className="active-pill">
             Aktivno: <strong>{filterLabel}</strong>
           </div>
+          <div className="actions">
+  <Link className="action-link" href="/nagrade/istorija">
+    Pregled dosadašnjih pobednika →
+  </Link>
+</div>
+
         </div>
       </div>
 
@@ -652,7 +666,9 @@ export default function NagradePage() {
                     <div className="card-sub">Najviše asistencija</div>
                   </div>
                   <div className="metric">
-                    <div className="metric-val">{awardsEvents.assists.winners.length ? awardsEvents.assists.max : "—"}</div>
+                    <div className="metric-val">
+                      {awardsEvents.assists.winners.length ? awardsEvents.assists.max : "—"}
+                    </div>
                     <div className="metric-lab">asist.</div>
                   </div>
                 </div>
@@ -669,9 +685,7 @@ export default function NagradePage() {
                     <div className="card-sub">Najviše golova po meču • min {MIN_MATCHES_FOR_EFF} meča</div>
                   </div>
                   <div className="metric">
-                    <div className="metric-val">
-                      {awardGoalRate.winners.length ? awardGoalRate.max.toFixed(2) : "—"}
-                    </div>
+                    <div className="metric-val">{awardGoalRate.winners.length ? awardGoalRate.max.toFixed(2) : "—"}</div>
                     <div className="metric-lab">G/meč</div>
                   </div>
                 </div>
@@ -724,9 +738,7 @@ export default function NagradePage() {
                     <div className="card-sub">Najviše MVP po meču • min {MIN_MATCHES_FOR_EFF} meča</div>
                   </div>
                   <div className="metric">
-                    <div className="metric-val">
-                      {awardMvpRate.winners.length ? awardMvpRate.max.toFixed(2) : "—"}
-                    </div>
+                    <div className="metric-val">{awardMvpRate.winners.length ? awardMvpRate.max.toFixed(2) : "—"}</div>
                     <div className="metric-lab">MVP/meč</div>
                   </div>
                 </div>
@@ -820,20 +832,7 @@ export default function NagradePage() {
                 </label>
               )}
 
-              {mode === "quarter" && (
-                <label className="field">
-                  <span className="label">Kvartal</span>
-                  <select className="select" value={quarter} onChange={(e) => setQuarter(e.target.value)}>
-                    {QUARTERS.map((q) => (
-                      <option key={q.value} value={q.value}>
-                        {q.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              <div className="hint">Savet: Kvartal i Godina su super kad imaš malo mečeva — izbegneš “prazne” nagrade.</div>
+              <div className="hint">Savet: Godina je super kad imaš malo mečeva — izbegneš “prazne” nagrade.</div>
             </div>
           </div>
         </div>
@@ -1058,6 +1057,24 @@ export default function NagradePage() {
           .sticky{ position: static; }
           .cards{ grid-template-columns: 1fr; }
         }
+          .actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+.action-link{
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,0.12);
+  background: rgba(255,255,255,0.85);
+  font-weight: 950;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+.action-link:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(0,0,0,0.06);
+  border-color: rgba(90,160,255,0.35);
+}
+
       `}</style>
     </div>
   );

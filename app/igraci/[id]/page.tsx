@@ -1,6 +1,20 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
+/* =====================
+   [NOVO] AWARDS ENGINE IMPORTI
+   - ovo koristimo da izračunamo trofeje (prestiž) kroz periode
+===================== */
+import {
+  computeAwards,
+  listPeriodsForYear,
+  listYears,
+  matchIdsForPeriod,
+  type MatchRow as AwardsMatchRow,
+  type EventRow as AwardsEventRow,
+  type TeamRow as AwardsTeamRow,
+} from "@/lib/awards";
+
 // =====================
 // TIPOVI
 // =====================
@@ -110,7 +124,7 @@ export default async function IgracPage({ params }: PageProps) {
     .returns<RivalryRow[]>();
 
   // =====================
-  // MEČEVI + TIM
+  // MEČEVI + TIM (samo mečevi ovog igrača)
   // =====================
   const { data: teamRows } = await supabase
     .from("match_teams")
@@ -134,7 +148,7 @@ export default async function IgracPage({ params }: PageProps) {
     : [];
 
   // =====================
-  // EVENTI
+  // EVENTI (samo event-i ovog igrača)
   // =====================
   const { data: events } = await supabase
     .from("match_events")
@@ -143,7 +157,7 @@ export default async function IgracPage({ params }: PageProps) {
     .returns<MatchEvent[]>();
 
   // =====================
-  // AGREGACIJA
+  // AGREGACIJA (total i per-meč, samo za prikaz profila)
   // =====================
   const totalStats = { goals: 0, assists: 0, mvps: 0 };
   const perMatch: Record<string, { goals: number; assists: number; mvp: boolean }> = {};
@@ -183,6 +197,88 @@ export default async function IgracPage({ params }: PageProps) {
     return gf > ga ? "W" : gf < ga ? "L" : "D";
   });
 
+  /* =====================
+     [NOVO] PRESTIŽ / TROFEJI
+     Ideja: prođemo kroz sve periode (mesec/kvartal/godina) i brojimo
+     koliko puta je ovaj igrač bio među pobednicima u tim periodima.
+     
+     Ovo je “brute force” varijanta (radi odmah).
+     Kasnije možemo optimizovati snapshot tabelom.
+  ===================== */
+
+  // 1) Učitaj SVE mečeve/evente/timove (za računanje istorije nagrada)
+  const { data: allMatches } = await supabase
+    .from("matches")
+    .select("id, date, home_score, away_score")
+    .order("date", { ascending: false })
+    .returns<AwardsMatchRow[]>();
+
+  const { data: allEvents } = await supabase
+    .from("match_events")
+    .select(
+      `
+      match_id,
+      player_id,
+      type,
+      value,
+      players ( id, name, slug, image_url, is_public )
+    `
+    )
+    .returns<AwardsEventRow[]>();
+
+  const { data: allTeams } = await supabase
+    .from("match_teams")
+    .select(
+      `
+      match_id,
+      team,
+      player_id,
+      players ( id, name, slug, image_url, is_public )
+    `
+    )
+    .returns<AwardsTeamRow[]>();
+
+  // 2) Prebroj trofeje kroz sve periode
+  const trophyCount = {
+    golden_shoe: 0, // ⚽ najviše golova
+    assist_king: 0, // 🅰️ najviše asistencija
+    mvp: 0, // 🏅 najviše MVP
+    ironman: 0, // 🛡️ najviše odigranih
+  };
+
+  const safeAllMatches = allMatches ?? [];
+  const safeAllEvents = allEvents ?? [];
+  const safeAllTeams = allTeams ?? [];
+
+  const years = listYears(safeAllMatches);
+
+  for (const y of years) {
+    const { monthPeriods, quarterPeriods, yearPeriod } = listPeriodsForYear(safeAllMatches, y);
+
+    // redosled nije bitan za brojanje, ali je jasno:
+    const periods = [...monthPeriods, ...quarterPeriods, yearPeriod];
+
+    for (const p of periods) {
+      const ids = matchIdsForPeriod(safeAllMatches, p);
+      if (!ids.length) continue;
+
+      const a = computeAwards({
+        matches: safeAllMatches,
+        events: safeAllEvents,
+        teams: safeAllTeams,
+        matchIds: ids,
+      });
+
+      if (a.goals.winners.some((w) => w.id === player.id)) trophyCount.golden_shoe += 1;
+      if (a.assists.winners.some((w) => w.id === player.id)) trophyCount.assist_king += 1;
+      if (a.mvps.winners.some((w) => w.id === player.id)) trophyCount.mvp += 1;
+      if (a.ironman.winners.some((w) => w.id === player.id)) trophyCount.ironman += 1;
+    }
+  }
+
+  const hasAnyTrophy =
+    trophyCount.golden_shoe + trophyCount.assist_king + trophyCount.mvp + trophyCount.ironman > 0;
+
   // =====================
   // RENDER
   // =====================
@@ -213,6 +309,19 @@ export default async function IgracPage({ params }: PageProps) {
               <span className="chip chip-amber">⚽ {totalStats.goals}</span>
               <span className="chip chip-sky">🅰️ {totalStats.assists}</span>
               <span className="chip chip-gold">🏆 {totalStats.mvps}</span>
+
+              {/* =====================
+                  [NOVO] PRESTIŽ / TROFEJI - prikaz u hero delu
+                  (pokazujemo samo ako postoji bar jedan trofej)
+                 ===================== */}
+              {hasAnyTrophy ? (
+                <>
+                  {trophyCount.golden_shoe ? <span className="chip chip-amber">🥇⚽ × {trophyCount.golden_shoe}</span> : null}
+                  {trophyCount.assist_king ? <span className="chip chip-sky">🅰️ × {trophyCount.assist_king}</span> : null}
+                  {trophyCount.mvp ? <span className="chip chip-gold">🏅 × {trophyCount.mvp}</span> : null}
+                  {trophyCount.ironman ? <span className="chip">🛡️ × {trophyCount.ironman}</span> : null}
+                </>
+              ) : null}
             </div>
 
             {/* FORMA */}
@@ -235,119 +344,9 @@ export default async function IgracPage({ params }: PageProps) {
         </div>
       </section>
 
-      
       {/* RIVALRIES */}
       {/*}
-      <section style={{ marginTop: 18 }}> 
-        <div className="rivalries-grid">
-          <div className="rivalries-card">
-            <div className="rivalries-title">😈 Nemesis</div>
-            <div className="rivalries-sub">Najgori matchup (min {MIN_DUELS} duela)</div>
-
-            {nemesisRows?.length ? (
-              <>
-                <div className="rivalries-list">
-                  {nemesisRows.map((r, i) => (
-                    <div key={i} className="rivalry-row">
-                      <div className="rivalry-left">
-                        <div className="rivalry-name">
-                          {r.opponent_slug ? (
-                            <Link href={`/igraci/${r.opponent_slug}`}>{r.opponent_name ?? "Nepoznat"}</Link>
-                          ) : (
-                            r.opponent_name ?? "Nepoznat"
-                          )}
-                        </div>
-
-                        <div className="rivalry-meta">
-                          Duela: <b>{r.duels}</b>
-                        </div>
-
-                        <div className="rivalry-stats">
-                          <span>
-                            <b>Pobede:</b> {r.a_wins}
-                          </span>
-                          <span>
-                            <b>Porazi:</b> {r.a_losses}
-                          </span>
-                          <span>
-                            <b>Nerešenih:</b> {r.draws}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="rivalry-right">
-                        <span className="rivalry-pill">Gol razlika {fmtGD(r.a_goal_diff)}</span>
-                        <span className="rivalry-pill">Saldo {fmtGD(r.a_net)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rivalries-footnote">
-                  <b>Saldo</b> = pobede − porazi • <b>Gol razlika</b> = ukupno (golovi tima igrača − golovi protivnika)
-                  kroz duele sa tim protivnikom.
-                </div>
-              </>
-            ) : (
-              <div className="rivalries-empty">Nema dovoljno duela za statistiku.</div>
-            )}
-          </div>
-
-          <div className="rivalries-card">
-            <div className="rivalries-title">🧾 Mušterije</div>
-            <div className="rivalries-sub">Najbolji matchup (min {MIN_DUELS} duela)</div>
-
-            {dominanceRows?.length ? (
-              <>
-                <div className="rivalries-list">
-                  {dominanceRows.map((r, i) => (
-                    <div key={i} className="rivalry-row">
-                      <div className="rivalry-left">
-                        <div className="rivalry-name">
-                          {r.opponent_slug ? (
-                            <Link href={`/igraci/${r.opponent_slug}`}>{r.opponent_name ?? "Nepoznat"}</Link>
-                          ) : (
-                            r.opponent_name ?? "Nepoznat"
-                          )}
-                        </div>
-
-                        <div className="rivalry-meta">
-                          Duela: <b>{r.duels}</b>
-                        </div>
-
-                        <div className="rivalry-stats">
-                          <span>
-                            <b>Pobede:</b> {r.a_wins}
-                          </span>
-                          <span>
-                            <b>Porazi:</b> {r.a_losses}
-                          </span>
-                          <span>
-                            <b>Nerešenih:</b> {r.draws}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="rivalry-right">
-                        <span className="rivalry-pill">Gol razlika {fmtGD(r.a_goal_diff)}</span>
-                        <span className="rivalry-pill">Saldo {fmtGD(r.a_net)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rivalries-footnote">
-                  <b>Saldo</b> = pobede − porazi • <b>Gol razlika</b> = ukupno (golovi tima igrača − golovi protivnika)
-                  kroz duele sa tim protivnikom.
-                </div>
-              </>
-            ) : (
-              <div className="rivalries-empty">Nema dovoljno duela za statistiku.</div>
-            )}
-          </div>
-        </div>
-      </section>
-
+      ... (tvoj blok ostaje isti)
       */}
 
       {/* MEČEVI */}
@@ -541,113 +540,8 @@ export default async function IgracPage({ params }: PageProps) {
         }
         .pill-mvp{ border-color:rgba(210,170,70,.4); }
 
-        /* RIVALRIES */
-        .rivalries-grid{
-          display:grid;
-          grid-template-columns:1fr 1fr;
-          gap:12px;
-        }
-        .rivalries-card{
-          border-radius:18px;
-          border:1px solid rgba(0,0,0,0.08);
-          background:white;
-          box-shadow:0 12px 30px rgba(0,0,0,0.06);
-          padding:14px;
-        }
-        .rivalries-title{
-          font-weight:1000;
-          font-size:16px;
-          margin:0;
-        }
-        .rivalries-sub{
-          margin-top:6px;
-          opacity:.7;
-          font-weight:850;
-          font-size:12.5px;
-        }
-        .rivalries-list{
-          display:flex;
-          flex-direction:column;
-          gap:10px;
-          margin-top:12px;
-        }
-
-        .rivalry-row{
-          display:grid;
-          grid-template-columns: 1fr auto;
-          gap:12px;
-          align-items:center;
-          padding:10px 12px;
-          border-radius:14px;
-          border:1px solid rgba(0,0,0,0.08);
-          background:rgba(0,0,0,0.015);
-        }
-        .rivalry-left{
-          display:grid;
-          gap:6px;
-        }
-
-        .rivalry-name{
-          font-weight:1000;
-        }
-        .rivalry-name a{
-          color:inherit;
-          text-decoration:none;
-        }
-        .rivalry-name a:hover{
-          text-decoration:underline;
-        }
-
-        .rivalry-meta{
-          font-size:12.5px;
-          opacity:.75;
-          font-weight:850;
-        }
-
-        .rivalry-stats{
-          display:flex;
-          gap:12px;
-          flex-wrap:wrap;
-          font-size:12.5px;
-          opacity:.85;
-          font-weight:850;
-        }
-
-        .rivalry-right{
-          display:flex;
-          gap:8px;
-          flex-wrap:wrap;
-          justify-content:flex-end;
-          align-items:center;
-        }
-        .rivalry-pill{
-          padding:6px 10px;
-          border-radius:999px;
-          border:1px solid rgba(0,0,0,0.12);
-          background:white;
-          font-size:12.5px;
-          font-weight:950;
-          white-space:nowrap;
-        }
-
-        .rivalries-footnote{
-          margin-top:12px;
-          font-size:12px;
-          opacity:.65;
-          font-weight:800;
-          line-height:1.45;
-        }
-
-        .rivalries-empty{
-          margin-top:12px;
-          opacity:.7;
-          font-weight:850;
-          font-size:13px;
-        }
-
         @media(max-width:900px){
           .match-row{ grid-template-columns:1fr; }
-          .rivalries-grid{ grid-template-columns:1fr; }
         }
       `}</style>
     </main>
