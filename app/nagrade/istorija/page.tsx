@@ -8,7 +8,6 @@ import {
   listPeriodsForYear,
   listYears,
   matchIdsForPeriod,
-  periodLabel,
   type EventRow,
   type MatchRow,
   type PeriodKey,
@@ -16,48 +15,10 @@ import {
   type Winner,
 } from "@/lib/awards";
 
-// =====================
-//  MINI KOMPONENTE
-// =====================
-function WinnerMini({ w, size = 28 }: { w: Winner; size?: number }) {
-  return (
-    <div className="wmini">
-      <img
-        src={w.image_url ?? "/player-images/placeholder.png"}
-        alt={w.name}
-        style={{ width: size, height: size }}
-      />
-      {w.slug ? (
-        <Link href={`/igraci/${w.slug}`} className="wmini-name">
-          {w.name}
-        </Link>
-      ) : (
-        <span className="wmini-name">{w.name}</span>
-      )}
-    </div>
-  );
-}
+type MonthPeriod = Extract<PeriodKey, { mode: "month" }>;
+type YearPeriod = Extract<PeriodKey, { mode: "year" }>;
 
-function WinnersRow({ icon, winners, featured = false }: { icon: string; winners: Winner[]; featured?: boolean }) {
-  if (!winners.length) return <div className="wrow-empty">{icon} —</div>;
-
-  return (
-    <div className={`wrow ${featured ? "featured" : ""}`}>
-      <div className="wrow-ico">{icon}</div>
-      <div className="wrow-list">
-        {winners.slice(0, featured ? 3 : 2).map((w) => (
-          <WinnerMini key={w.id} w={w} size={featured ? 34 : 28} />
-        ))}
-        {winners.length > (featured ? 3 : 2) ? (
-          <div className="wrow-more">+{winners.length - (featured ? 3 : 2)} još</div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function monthLabelSR(period: PeriodKey) {
-  if (period.mode !== "month") return periodLabel(period);
+function monthLabelSR(period: MonthPeriod) {
   const m = period.month;
   const months: Record<string, string> = {
     "01": "Januar",
@@ -74,6 +35,87 @@ function monthLabelSR(period: PeriodKey) {
     "12": "Decembar",
   };
   return `${period.year} • ${months[m] ?? m}`;
+}
+
+function fmt2(n: number) {
+  if (!Number.isFinite(n)) return "—";
+  return n.toFixed(2);
+}
+
+function WinnerMini({ w, size = 28 }: { w: Winner; size?: number }) {
+  return (
+    <div className="wmini">
+      <img
+        src={w.image_url ?? "/player-images/placeholder.png"}
+        alt={w.name}
+        style={{ width: size, height: size }}
+      />
+      {w.slug ? (
+        <Link href={`/igraci/${w.slug}`} className="wname">
+          {w.name}
+        </Link>
+      ) : (
+        <span className="wname">{w.name}</span>
+      )}
+      {w.extra ? <span className="wextra">{w.extra}</span> : null}
+    </div>
+  );
+}
+
+function Spotlight({
+  icon,
+  title,
+  subtitle,
+  value,
+  label,
+  winners,
+}: {
+  icon: string;
+  title: string;
+  subtitle: string;
+  value: string;
+  label: string;
+  winners: Winner[];
+}) {
+  return (
+    <div className="spot">
+      <div className="spotTop">
+        <div className="spotIco">{icon}</div>
+        <div className="spotHead">
+          <div className="spotTitle">{title}</div>
+          <div className="spotSub">{subtitle}</div>
+        </div>
+        <div className="spotMetric">
+          <div className="spotVal">{value}</div>
+          <div className="spotLab">{label}</div>
+        </div>
+      </div>
+
+      <div className="spotW">
+        {winners.length ? (
+          winners.map((w) => (
+            <div key={w.id} className="spotRow">
+              <img src={w.image_url ?? "/player-images/placeholder.png"} alt={w.name} />
+              <div className="spotText">
+                {w.slug ? (
+                  <Link href={`/igraci/${w.slug}`} className="spotName">
+                    {w.name}
+                  </Link>
+                ) : (
+                  <span className="spotName">{w.name}</span>
+                )}
+                {w.extra ? <div className="spotMeta">{w.extra}</div> : null}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="wempty">Nema podataka.</div>
+        )}
+      </div>
+
+      <div className="spotFoot">Arhiva se ne bavi “sada”, nego “legendom”.</div>
+    </div>
+  );
 }
 
 export default function NagradeIstorijaPage() {
@@ -145,196 +187,374 @@ export default function NagradeIstorijaPage() {
 
   const yearOptions = useMemo(() => listYears(matches), [matches]);
 
-  // ✅ samo monthPeriods + yearPeriod
-  const periods = useMemo(() => {
-    if (!year) return { monthPeriods: [] as PeriodKey[], yearPeriod: null as PeriodKey | null };
-    const { monthPeriods, yearPeriod } = listPeriodsForYear(matches, year);
-    return { monthPeriods, yearPeriod };
+  const { monthPeriods, yearPeriod } = useMemo(() => {
+    if (!year) return { monthPeriods: [] as MonthPeriod[], yearPeriod: null as YearPeriod | null };
+    const res = listPeriodsForYear(matches, year);
+    const mp = (res.monthPeriods ?? []).filter((p): p is MonthPeriod => p.mode === "month");
+    const yp = res.yearPeriod && res.yearPeriod.mode === "year" ? (res.yearPeriod as YearPeriod) : null;
+    return { monthPeriods: mp, yearPeriod: yp };
   }, [matches, year]);
 
-  const cards = useMemo(() => {
-    if (!year) return [];
+  const yearCard = useMemo(() => {
+    if (!yearPeriod) return null;
+    const ids = matchIdsForPeriod(matches, yearPeriod);
+    if (!ids.length) return null;
+    const core = computeAwards({ matches, events, teams, matchIds: ids });
+    return { matchCount: ids.length, core };
+  }, [matches, events, teams, yearPeriod]);
 
-    const list: { period: PeriodKey; matchCount: number; core: ReturnType<typeof computeAwards> }[] = [];
-
-    const all = [...periods.monthPeriods, ...(periods.yearPeriod ? [periods.yearPeriod] : [])];
-
-    for (const p of all) {
+  const monthCards = useMemo(() => {
+    const list: { period: MonthPeriod; matchCount: number; core: ReturnType<typeof computeAwards> }[] = [];
+    for (const p of monthPeriods) {
       const ids = matchIdsForPeriod(matches, p);
       if (!ids.length) continue;
-
       const core = computeAwards({ matches, events, teams, matchIds: ids });
       list.push({ period: p, matchCount: ids.length, core });
     }
+    return list.sort((a, b) => a.period.month.localeCompare(b.period.month));
+  }, [matches, events, teams, monthPeriods]);
 
-    // sort: prvo GODINA, pa meseci 01..12
-    return list.sort((a, b) => {
-      if (a.period.mode === "year" && b.period.mode !== "year") return -1;
-      if (a.period.mode !== "year" && b.period.mode === "year") return 1;
+  const dominance = useMemo(() => {
+    if (!yearCard) return [];
+    const cats = [
+      { key: "goals", winners: yearCard.core.goals.winners },
+      { key: "assists", winners: yearCard.core.assists.winners },
+      { key: "mvps", winners: yearCard.core.mvps.winners },
+      { key: "ga", winners: yearCard.core.ga.winners },
+      { key: "ironman", winners: yearCard.core.ironman.winners },
+      { key: "form", winners: yearCard.core.form.winners },
+      { key: "stub", winners: yearCard.core.stub.winners },
+      { key: "leastLosses", winners: yearCard.core.leastLosses.winners }, // ✅ NEW
+    ] as const;
 
-      if (a.period.mode === "month" && b.period.mode === "month") {
-        return a.period.month.localeCompare(b.period.month);
+    const map = new Map<string, { w: Winner; catSet: Set<string> }>();
+
+    for (const c of cats) {
+      for (const w of c.winners) {
+        const cur = map.get(w.id);
+        if (!cur) map.set(w.id, { w, catSet: new Set([c.key]) });
+        else cur.catSet.add(c.key);
       }
-      return 0;
-    });
-  }, [matches, events, teams, year, periods]);
+    }
 
-  const yearCard = useMemo(() => cards.find((c) => c.period.mode === "year") ?? null, [cards]);
-  type MonthCard = { period: Extract<PeriodKey, { mode: "month" }>; matchCount: number; core: ReturnType<typeof computeAwards> };
+    const arr = Array.from(map.values()).map((x) => ({
+      winner: x.w,
+      count: x.catSet.size,
+    }));
 
-const monthCards = useMemo(() => {
-  return cards.filter((c): c is MonthCard => c.period.mode === "month");
-}, [cards]);
+    arr.sort((a, b) => b.count - a.count || a.winner.name.localeCompare(b.winner.name));
+    return arr.filter((x) => x.count >= 2).slice(0, 5);
+  }, [yearCard]);
 
+  const yearStats = useMemo(() => {
+    if (!yearCard) return null;
+    const w = [
+      ...yearCard.core.goals.winners,
+      ...yearCard.core.assists.winners,
+      ...yearCard.core.mvps.winners,
+      ...yearCard.core.ga.winners,
+      ...yearCard.core.ironman.winners,
+      ...yearCard.core.form.winners,
+      ...yearCard.core.stub.winners,
+      ...yearCard.core.leastLosses.winners,
+      ...yearCard.core.goalRate.winners,
+      ...yearCard.core.assistRate.winners,
+      ...yearCard.core.mvpRate.winners,
+    ];
+    const uniq = new Map<string, Winner>();
+    for (const x of w) uniq.set(x.id, x);
+    return { uniqueWinners: uniq.size };
+  }, [yearCard]);
 
   if (loading) return <p style={{ padding: 20 }}>Učitavanje istorije…</p>;
   if (error) return <p style={{ padding: 20, color: "red" }}>{error}</p>;
 
   return (
-    <div className="hist-page">
-      {/* HEADER */}
-      <div className="hist-head">
-        <div className="hist-head-row">
-          <div>
-            <h1 className="hist-title">Istorija nagrada</h1>
-            <div className="hist-sub">Pregled perioda po godini (mesec / sezona).</div>
-          </div>
+    <div className="page">
+      <div className="head">
+        <div>
+          <h1 className="h1">Hall of Fame</h1>
+          <div className="sub">Arhiva nagrada: godina kao priča, meseci kao poglavlja.</div>
+        </div>
 
-          <div className="hist-controls">
-            <Link href="/nagrade" className="back-link">
-              ← Nagrade
-            </Link>
+        <div className="right">
+          <Link className="pillLink" href="/nagrade">
+            ← Trofejna vitrina
+          </Link>
 
-            <select value={year} onChange={(e) => setYear(e.target.value)} className="year-select">
-              {yearOptions.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </div>
+          <select className="select" value={year} onChange={(e) => setYear(e.target.value)}>
+            {yearOptions.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* FEATURED: SEZONA */}
       {yearCard ? (
-        <section className="season">
-          <div className="season-top">
-            <div className="season-left">
-              <div className="season-badges">
-                <span className="pill pill-season">SEZONA {year}</span>
-                <span className="pill pill-live">LIVE • u toku</span>
+        <section className="hof">
+          <div className="hofTop">
+            <div>
+              <div className="badges">
+                <span className="badge gold">🏆 SEZONA {year}</span>
+                <span className="badge soft">{yearCard.matchCount} meča</span>
+                {yearStats ? <span className="badge soft">{yearStats.uniqueWinners} različitih osvajača</span> : null}
               </div>
-              <div className="season-headline">Trenutno stanje u trci za prestižne nagrade za sezonu {year}</div>
-              <div className="season-meta">Odigrano: <b>{yearCard.matchCount}</b> meča</div>
+              <div className="hofTitle">Godišnje nagrade — vitrina istorije</div>
+              <div className="hofSub">Ovo je ono što ostaje kad “danas” prođe.</div>
             </div>
 
-            <div className="season-right">
-              <div className="season-note">
-                Napomena: ako ima izjednačenja, svi su pobednici (isto kao na glavnoj stranici nagrada).
-              </div>
+            <div className="hofNote">
+              Pravilo je isto uvek: nema tie-breaka. Izjednačenje znači da legenda ima više imena.
             </div>
           </div>
 
-          <div className="season-grid">
-            <WinnersRow icon="🥇⚽" winners={yearCard.core.goals.winners} featured />
-            <WinnersRow icon="🅰️" winners={yearCard.core.assists.winners} featured />
-            <WinnersRow icon="🏅" winners={yearCard.core.mvps.winners} featured />
-            <WinnersRow icon="🛡️" winners={yearCard.core.ironman.winners} featured />
+          <div className="dom">
+            <div className="domTop">
+              <div>
+                <div className="domTitle">Dominacija sezone</div>
+                <div className="domSub">Isti čovek u više kategorija = ozbiljan pečat na sezoni.</div>
+              </div>
+              <div className="domHint">Računa se broj različitih kategorija u kojima se pojavljuje kao pobednik.</div>
+            </div>
+
+            {dominance.length ? (
+              <div className="domList">
+                {dominance.map((x) => (
+                  <div key={x.winner.id} className="domRow">
+                    <WinnerMini w={x.winner} size={34} />
+                    <span className="domBadge">{x.count} kategorije</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="domEmpty">Nema višekategorijskih osvajača ove sezone (ili nema dovoljno podataka).</div>
+            )}
+          </div>
+
+          {/* ✅ “PRO STATISTIKA” — vraćena telemetrija */}
+          <div className="pro">
+            <div className="proTop">
+              <div>
+                <div className="proTitle">Pro statistika</div>
+                <div className="proSub">Učinak po meču (min. prag iz lib/awards).</div>
+              </div>
+              <div className="proHint">Ovo je “tehnički sloj” — ne menja prestiž, samo ga dopunjuje.</div>
+            </div>
+
+            <div className="proGrid">
+              <Spotlight
+                icon="🎯"
+                title="Golovi po meču"
+                subtitle="Efikasnost (G/meč)"
+                value={yearCard.core.goalRate.winners.length ? fmt2(yearCard.core.goalRate.max) : "—"}
+                label="G/meč"
+                winners={yearCard.core.goalRate.winners}
+              />
+              <Spotlight
+                icon="🧠"
+                title="Asistencije po meču"
+                subtitle="Kreacija (A/meč)"
+                value={yearCard.core.assistRate.winners.length ? fmt2(yearCard.core.assistRate.max) : "—"}
+                label="A/meč"
+                winners={yearCard.core.assistRate.winners}
+              />
+              <Spotlight
+                icon="✨"
+                title="MVP po meču"
+                subtitle="Uticaj (MVP/meč)"
+                value={yearCard.core.mvpRate.winners.length ? fmt2(yearCard.core.mvpRate.max) : "—"}
+                label="MVP/meč"
+                winners={yearCard.core.mvpRate.winners}
+              />
+              <Spotlight
+                icon="🧊"
+                title="Najmanje poraza"
+                subtitle="Stabilnost kroz rezultate"
+                value={yearCard.core.leastLosses.winners.length ? String(yearCard.core.leastLosses.min) : "—"}
+                label="poraza"
+                winners={yearCard.core.leastLosses.winners}
+              />
+            </div>
+          </div>
+
+          {/* ✅ “glavne” godišnje kartice */}
+          <div className="grid">
+            <Spotlight
+              icon="🥇⚽"
+              title="Zlatna kopačka"
+              subtitle="Najviše golova"
+              value={yearCard.core.goals.winners.length ? String(yearCard.core.goals.max) : "—"}
+              label="golova"
+              winners={yearCard.core.goals.winners}
+            />
+            <Spotlight
+              icon="🅰️"
+              title="Asist kralj"
+              subtitle="Najviše asistencija"
+              value={yearCard.core.assists.winners.length ? String(yearCard.core.assists.max) : "—"}
+              label="asist."
+              winners={yearCard.core.assists.winners}
+            />
+            <Spotlight
+              icon="🏅"
+              title="MVP sezone"
+              subtitle="Najviše MVP priznanja"
+              value={yearCard.core.mvps.winners.length ? String(yearCard.core.mvps.max) : "—"}
+              label="MVP"
+              winners={yearCard.core.mvps.winners}
+            />
+            <Spotlight
+              icon="⚡"
+              title="Učešće u golovima"
+              subtitle="Golovi + asistencije"
+              value={yearCard.core.ga.winners.length ? String(yearCard.core.ga.max) : "—"}
+              label="G/A"
+              winners={yearCard.core.ga.winners}
+            />
+            <Spotlight
+              icon="🛡️"
+              title="Pouzdanost"
+              subtitle="Najviše odigranih mečeva"
+              value={yearCard.core.ironman.winners.length ? String(yearCard.core.ironman.max) : "—"}
+              label="meča"
+              winners={yearCard.core.ironman.winners}
+            />
+            <Spotlight
+              icon="🔥"
+              title="Najbolja forma"
+              subtitle="Najveći procenat pobeda"
+              value={yearCard.core.form.winners.length ? `${Math.round(yearCard.core.form.maxRate * 100)}%` : "—"}
+              label="pobeda"
+              winners={yearCard.core.form.winners}
+            />
+            <Spotlight
+              icon="🧱"
+              title="STUB"
+              subtitle="Najmanje primljenih golova"
+              value={yearCard.core.stub.winners.length ? String(yearCard.core.stub.min) : "—"}
+              label="primljenih"
+              winners={yearCard.core.stub.winners}
+            />
           </div>
         </section>
-      ) : null}
+      ) : (
+        <div className="empty">Nema dovoljno podataka za izabranu godinu.</div>
+      )}
 
-      {/* MESECI */}
-      <div className="months-head">
-        <div className="months-title">Meseci</div>
-        <div className="months-sub">Brzi pregled pobednika po mesecima.</div>
+      <div className="monthsHead">
+        <div className="monthsTitle">Meseci</div>
+        <div className="monthsSub">Kako se sezona gradila kroz vreme.</div>
       </div>
 
-      <div className="months-grid">
-        {monthCards.map((c) => {
-          const label = monthLabelSR(c.period);
-          const key = `month-${c.period.year}-${c.period.month}`;
+      <div className="monthsGrid">
+        {monthCards.map((c) => (
+          <div key={`${c.period.year}-${c.period.month}`} className="month">
+            <div className="monthTop">
+              <div className="monthLabel">{monthLabelSR(c.period)}</div>
+              <div className="monthCount">{c.matchCount} meča</div>
+            </div>
 
-          return (
-            <div key={key} className="month-card">
-              <div className="month-top">
-                <div className="month-label">{label}</div>
-                <div className="month-count">{c.matchCount} meča</div>
+            <div className="monthRows">
+              <div className="row">
+                <div className="rowIco">🥇⚽</div>
+                <div className="rowW">
+                  {c.core.goals.winners.slice(0, 2).map((w) => (
+                    <WinnerMini key={w.id} w={w} />
+                  ))}
+                  {c.core.goals.winners.length > 2 ? <span className="more">+{c.core.goals.winners.length - 2}</span> : null}
+                </div>
               </div>
 
-              <div className="month-awards">
-                <WinnersRow icon="🥇⚽" winners={c.core.goals.winners} />
-                <WinnersRow icon="🅰️" winners={c.core.assists.winners} />
-                <WinnersRow icon="🏅" winners={c.core.mvps.winners} />
-                <WinnersRow icon="🛡️" winners={c.core.ironman.winners} />
+              <div className="row">
+                <div className="rowIco">🅰️</div>
+                <div className="rowW">
+                  {c.core.assists.winners.slice(0, 2).map((w) => (
+                    <WinnerMini key={w.id} w={w} />
+                  ))}
+                  {c.core.assists.winners.length > 2 ? <span className="more">+{c.core.assists.winners.length - 2}</span> : null}
+                </div>
+              </div>
+
+              <div className="row">
+                <div className="rowIco">🏅</div>
+                <div className="rowW">
+                  {c.core.mvps.winners.slice(0, 2).map((w) => (
+                    <WinnerMini key={w.id} w={w} />
+                  ))}
+                  {c.core.mvps.winners.length > 2 ? <span className="more">+{c.core.mvps.winners.length - 2}</span> : null}
+                </div>
+              </div>
+
+              <div className="row">
+                <div className="rowIco">🧱</div>
+                <div className="rowW">
+                  {c.core.stub.winners.slice(0, 2).map((w) => (
+                    <WinnerMini key={w.id} w={w} />
+                  ))}
+                  {c.core.stub.winners.length > 2 ? <span className="more">+{c.core.stub.winners.length - 2}</span> : null}
+                </div>
               </div>
             </div>
-          );
-        })}
+
+            <div className="monthFoot">Arhiva: mesec je poglavlje, godina je knjiga.</div>
+          </div>
+        ))}
       </div>
 
       <style>{`
-        .hist-page{
-          padding: 20px;
-          max-width: 1200px;
-          margin: 0 auto;
-          animation: fade 360ms ease-out both;
-        }
+        /* Ovo je isti CSS kao ranije + dodato: .pro */
+        .page{ padding:20px; max-width:1200px; margin:0 auto; animation: fade 360ms ease-out both; }
         @keyframes fade{ from{opacity:0; transform: translateY(6px);} to{opacity:1; transform:none;} }
 
-        /* HEADER */
-        .hist-head{
-          border-radius: 22px;
-          border: 1px solid rgba(0,0,0,0.08);
+        .head{
+          border-radius:22px;
+          border:1px solid rgba(0,0,0,0.08);
           background:
             radial-gradient(900px 220px at 10% 0%, rgba(240,180,41,0.18), transparent 55%),
             linear-gradient(180deg, rgba(255,255,255,1), rgba(255,255,255,0.98));
           box-shadow: 0 14px 36px rgba(0,0,0,0.06);
-          padding: 16px;
-        }
-        .hist-head-row{
+          padding:16px;
           display:flex;
-          justify-content: space-between;
-          gap: 12px;
-          flex-wrap: wrap;
-          align-items: center;
+          justify-content:space-between;
+          gap:12px;
+          flex-wrap:wrap;
+          align-items:center;
         }
-        .hist-title{ margin:0; font-weight:1000; letter-spacing:0.2px; }
-        .hist-sub{ margin-top:6px; opacity:0.78; font-weight:850; }
+        .h1{ margin:0; font-weight:1000; letter-spacing:0.2px; }
+        .sub{ margin-top:6px; opacity:0.78; font-weight:850; }
 
-        .hist-controls{ display:flex; gap:10px; align-items:center; }
-        .back-link{
+        .right{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+        .pillLink{
           text-decoration:none;
           font-weight: 950;
-          opacity: 0.85;
           color: inherit;
-          padding: 8px 10px;
+          padding: 8px 12px;
           border-radius: 999px;
           border: 1px solid rgba(0,0,0,0.12);
           background: rgba(255,255,255,0.75);
           backdrop-filter: blur(10px);
         }
-        .back-link:hover{ text-decoration: underline; }
+        .pillLink:hover{ text-decoration: underline; }
 
-        .year-select{
-          padding: 10px 12px;
-          border-radius: 12px;
-          border: 1px solid rgba(0,0,0,0.14);
-          font-weight: 900;
-          background: white;
-          outline: none;
+        .select{
+          padding:10px 12px;
+          border-radius:12px;
+          border:1px solid rgba(0,0,0,0.14);
+          font-weight:900;
+          background:white;
+          outline:none;
         }
-        .year-select:focus{
+        .select:focus{
           border-color: rgba(240,180,41,0.60);
           box-shadow: 0 0 0 4px rgba(240,180,41,0.16);
         }
 
-        /* FEATURED SEASON */
-        .season{
+        .hof{
           margin-top: 14px;
-          border-radius: 22px;
-          border: 1px solid rgba(0,0,0,0.08);
+          border-radius:22px;
+          border:1px solid rgba(240,180,41,0.28);
           background:
             radial-gradient(900px 260px at 12% 0%, rgba(240,180,41,0.22), transparent 55%),
             radial-gradient(900px 260px at 88% 0%, rgba(90,160,255,0.14), transparent 55%),
@@ -343,162 +563,245 @@ const monthCards = useMemo(() => {
           padding: 16px;
         }
 
-        .season-top{
+        .hofTop{ display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; align-items:flex-start; }
+        .badges{ display:flex; gap:8px; flex-wrap:wrap; }
+        .badge{
+          display:inline-flex; align-items:center;
+          padding:7px 10px; border-radius:999px;
+          border:1px solid rgba(0,0,0,0.12);
+          font-weight:950; font-size:12px;
+          background: rgba(255,255,255,0.78);
+        }
+        .badge.gold{ border-color: rgba(240,180,41,0.55); background: rgba(255,250,230,0.90); }
+        .badge.soft{ opacity:0.85; }
+
+        .hofTitle{ margin-top:10px; font-weight:1000; font-size:18px; letter-spacing:0.2px; }
+        .hofSub{ margin-top:6px; opacity:0.78; font-weight:850; }
+
+        .hofNote{
+          padding:10px 12px;
+          border-radius:16px;
+          border:1px solid rgba(0,0,0,0.08);
+          background: rgba(255,255,255,0.70);
+          opacity:0.85;
+          font-weight:850;
+          max-width:360px;
+          line-height:1.45;
+          font-size:12.5px;
+        }
+
+        .dom{
+          margin-top: 14px;
+          border-radius: 18px;
+          border: 1px solid rgba(0,0,0,0.08);
+          background: rgba(255,255,255,0.78);
+          box-shadow: 0 12px 30px rgba(0,0,0,0.06);
+          padding: 14px;
+        }
+        .domTop{
           display:flex;
           justify-content: space-between;
-          gap: 14px;
+          gap: 12px;
           flex-wrap: wrap;
           align-items: flex-start;
         }
-
-        .season-badges{ display:flex; gap:8px; flex-wrap:wrap; }
-        .pill{
-          display:inline-flex;
-          align-items:center;
-          padding: 7px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(0,0,0,0.12);
-          font-weight: 950;
-          font-size: 12px;
-          background: rgba(255,255,255,0.8);
-        }
-        .pill-season{ border-color: rgba(240,180,41,0.45); }
-        .pill-live{ border-color: rgba(90,160,255,0.35); }
-
-        .season-headline{
-          margin-top: 10px;
-          font-weight: 1000;
-          letter-spacing: 0.2px;
-          font-size: 18px;
-          line-height: 1.25;
-        }
-        .season-meta{
-          margin-top: 8px;
-          opacity: 0.78;
-          font-weight: 900;
-        }
-
-        .season-note{
-          padding: 10px 12px;
-          border-radius: 16px;
-          border: 1px solid rgba(0,0,0,0.08);
-          background: rgba(255,255,255,0.7);
-          opacity: 0.85;
+        .domTitle{ font-weight: 1000; letter-spacing: 0.2px; }
+        .domSub{ margin-top:6px; opacity:0.78; font-weight: 850; }
+        .domHint{
+          max-width: 380px;
+          opacity: 0.75;
           font-weight: 850;
-          max-width: 360px;
-          line-height: 1.45;
           font-size: 12.5px;
+          line-height: 1.45;
         }
-
-        .season-grid{
-          margin-top: 14px;
+        .domList{
+          margin-top: 12px;
           display:grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 12px;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
         }
-
-        /* MONTHS HEAD */
-        .months-head{
-          margin-top: 16px;
+        .domRow{
           display:flex;
           justify-content: space-between;
           gap: 10px;
-          align-items: baseline;
-          flex-wrap: wrap;
+          align-items: center;
+          border-radius: 16px;
+          border: 1px solid rgba(0,0,0,0.08);
+          background: rgba(255,255,255,0.72);
+          padding: 10px;
         }
-        .months-title{ font-weight: 1000; font-size: 16px; }
-        .months-sub{ opacity: 0.75; font-weight: 850; }
+        .domBadge{
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(240,180,41,0.35);
+          background: rgba(255,250,230,0.90);
+          font-weight: 950;
+          font-size: 12px;
+          white-space: nowrap;
+        }
+        .domEmpty{ margin-top: 10px; opacity: 0.75; font-weight: 900; font-size: 13px; }
 
-        /* MONTH GRID */
-        .months-grid{
+        /* ✅ Pro blok */
+        .pro{
+          margin-top: 14px;
+          border-radius: 18px;
+          border: 1px solid rgba(0,0,0,0.08);
+          background: rgba(255,255,255,0.78);
+          box-shadow: 0 12px 30px rgba(0,0,0,0.06);
+          padding: 14px;
+        }
+        .proTop{
+          display:flex;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+          align-items: flex-start;
+        }
+        .proTitle{ font-weight: 1000; letter-spacing: 0.2px; }
+        .proSub{ margin-top:6px; opacity:0.78; font-weight: 850; }
+        .proHint{
+          max-width: 420px;
+          opacity: 0.75;
+          font-weight: 850;
+          font-size: 12.5px;
+          line-height: 1.45;
+        }
+        .proGrid{
           margin-top: 12px;
           display:grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 12px;
         }
 
-        .month-card{
-          border-radius: 18px;
-          border: 1px solid rgba(0,0,0,0.08);
+        .grid{
+          margin-top:14px;
+          display:grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap:12px;
+        }
+
+        .spot{
+          border-radius:18px;
+          border:1px solid rgba(0,0,0,0.08);
+          background:
+            radial-gradient(700px 180px at 10% 0%, rgba(240,180,41,0.12), transparent 60%),
+            radial-gradient(700px 180px at 90% 0%, rgba(90,160,255,0.08), transparent 60%),
+            linear-gradient(180deg, rgba(255,255,255,1), rgba(255,255,255,0.98));
+          box-shadow: 0 14px 34px rgba(0,0,0,0.07);
+          padding:14px;
+        }
+
+        .spotTop{ display:flex; gap:12px; align-items:center; justify-content:space-between; }
+        .spotIco{
+          width:42px; height:42px; border-radius:16px;
+          display:grid; place-items:center;
+          border:1px solid rgba(240,180,41,0.22);
+          background: rgba(255,255,255,0.85);
+          font-weight:1000;
+        }
+        .spotHead{ display:grid; gap:2px; }
+        .spotTitle{ font-weight:1000; letter-spacing:0.2px; }
+        .spotSub{ font-size:12.5px; opacity:0.78; font-weight:850; }
+        .spotMetric{ text-align:right; min-width:88px; }
+        .spotVal{ font-weight:1000; font-size:18px; }
+        .spotLab{ font-size:12px; opacity:0.72; font-weight:900; }
+
+        .spotW{
+          margin-top:12px;
+          padding-top:12px;
+          border-top:1px solid rgba(0,0,0,0.06);
+          display:grid;
+          gap:10px;
+        }
+
+        .spotRow{ display:flex; gap:10px; align-items:center; }
+        .spotRow img{
+          width:54px; height:54px; border-radius:999px; object-fit:cover;
+          border:1px solid rgba(0,0,0,0.10);
+          background:white;
+        }
+        .spotText{ display:grid; gap:2px; }
+        .spotName{ font-weight:950; text-decoration:none; color:inherit; }
+        .spotName:hover{ text-decoration: underline; }
+        .spotMeta{ font-size:12px; opacity:0.72; font-weight:850; }
+        .spotFoot{ margin-top:12px; font-size:12px; opacity:0.70; font-weight:850; }
+
+        .monthsHead{
+          margin-top: 16px;
+          display:flex;
+          justify-content:space-between;
+          gap:10px;
+          align-items:baseline;
+          flex-wrap:wrap;
+        }
+        .monthsTitle{ font-weight:1000; font-size:16px; }
+        .monthsSub{ opacity:0.75; font-weight:850; }
+
+        .monthsGrid{
+          margin-top:12px;
+          display:grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap:12px;
+        }
+
+        .month{
+          border-radius:18px;
+          border:1px solid rgba(0,0,0,0.08);
           background:
             radial-gradient(700px 180px at 10% 0%, rgba(240,180,41,0.10), transparent 60%),
             radial-gradient(700px 180px at 90% 0%, rgba(90,160,255,0.07), transparent 60%),
             linear-gradient(180deg, rgba(255,255,255,1), rgba(255,255,255,0.98));
           box-shadow: 0 12px 30px rgba(0,0,0,0.06);
-          padding: 14px;
+          padding:14px;
         }
 
-        .month-top{
-          display:flex;
-          justify-content: space-between;
-          gap: 10px;
-          align-items:center;
-        }
-        .month-label{ font-weight: 1000; }
-        .month-count{ opacity: 0.75; font-weight: 900; }
+        .monthTop{ display:flex; justify-content:space-between; gap:10px; align-items:center; }
+        .monthLabel{ font-weight:1000; }
+        .monthCount{ opacity:0.75; font-weight:900; }
 
-        .month-awards{
-          margin-top: 12px;
-          display:grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 12px;
-        }
-
-        /* WINNERS ROW */
-        .wrow{
-          border-radius: 16px;
-          border: 1px solid rgba(0,0,0,0.08);
+        .monthRows{ margin-top:12px; display:grid; gap:10px; }
+        .row{
+          border-radius:16px;
+          border:1px solid rgba(0,0,0,0.08);
           background: rgba(255,255,255,0.72);
-          padding: 10px;
-        }
-        .wrow.featured{
-          background: rgba(255,255,255,0.82);
-        }
-        .wrow-ico{
-          opacity: 0.7;
-          font-weight: 1000;
-          margin-bottom: 8px;
-        }
-        .wrow-list{ display:grid; gap: 8px; }
-        .wrow-more{ opacity: 0.7; font-weight: 850; font-size: 12px; }
-
-        .wrow-empty{
-          opacity: 0.65;
-          padding: 10px;
-          border-radius: 16px;
-          border: 1px dashed rgba(0,0,0,0.18);
-          background: rgba(255,255,255,0.55);
-          font-weight: 900;
-        }
-
-        .wmini{
+          padding:10px;
           display:flex;
-          align-items:center;
-          gap: 8px;
+          gap:10px;
+          align-items:flex-start;
         }
+        .rowIco{ opacity:0.7; font-weight:1000; min-width: 40px; }
+        .rowW{ display:grid; gap:8px; width:100%; }
+        .more{ opacity:0.7; font-weight:900; font-size:12px; }
+
+        .monthFoot{ margin-top:12px; font-size:12px; opacity:0.70; font-weight:850; }
+
+        .wmini{ display:flex; align-items:center; gap:8px; }
         .wmini img{
-          border-radius: 999px;
-          object-fit: cover;
-          border: 1px solid rgba(0,0,0,0.10);
-          background: white;
+          border-radius:999px; object-fit:cover;
+          border:1px solid rgba(0,0,0,0.10);
+          background:white;
           flex: 0 0 auto;
         }
-        .wmini-name{
-          font-weight: 950;
-          text-decoration: none;
-          color: inherit;
-          line-height: 1.2;
+        .wname{ font-weight:950; text-decoration:none; color:inherit; line-height:1.2; }
+        .wname:hover{ text-decoration: underline; }
+        .wextra{ margin-left:auto; opacity:0.75; font-weight:900; font-size:12px; }
+        .wempty{ opacity:0.7; font-weight:900; font-size:12px; }
+
+        .empty{
+          margin-top: 14px;
+          border-radius: 18px;
+          border: 1px dashed rgba(0,0,0,0.18);
+          background: rgba(255,255,255,0.6);
+          padding: 16px;
+          font-weight: 900;
+          opacity: 0.75;
         }
-        .wmini-name:hover{ text-decoration: underline; }
 
         @media (max-width: 980px){
-          .months-grid{ grid-template-columns: 1fr; }
-          .season-grid{ grid-template-columns: 1fr 1fr; }
-        }
-
-        @media (max-width: 560px){
-          .season-grid{ grid-template-columns: 1fr; }
-          .month-awards{ grid-template-columns: 1fr; }
+          .grid{ grid-template-columns: 1fr; }
+          .monthsGrid{ grid-template-columns: 1fr; }
+          .domList{ grid-template-columns: 1fr; }
+          .proGrid{ grid-template-columns: 1fr; }
         }
       `}</style>
     </div>
