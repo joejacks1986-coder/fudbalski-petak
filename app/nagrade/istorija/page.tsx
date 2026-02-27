@@ -113,7 +113,7 @@ function Spotlight({
         )}
       </div>
 
-      <div className="spotFoot">Arhiva se ne bavi “sada”, nego “legendom”.</div>
+      {/*<div className="spotFoot">Arhiva se ne bavi “sada”, nego “legendom”.</div>*/}
     </div>
   );
 }
@@ -298,7 +298,7 @@ export default function NagradeIstorijaPage() {
             <div>
               <div className="badges">
                 <span className="badge gold">🏆 SEZONA {year}</span>
-                <span className="badge soft">{yearCard.matchCount} meča</span>
+                <span className="badge soft">{yearCard.matchCount} mečeva</span>
                 {yearStats ? <span className="badge soft">{yearStats.uniqueWinners} različitih osvajača</span> : null}
               </div>
               <div className="hofTitle">Godišnje nagrade — vitrina istorije</div>
@@ -340,7 +340,7 @@ export default function NagradeIstorijaPage() {
                 <div className="proTitle">Pro statistika</div>
                 <div className="proSub">Učinak po meču (min. prag iz lib/awards).</div>
               </div>
-              <div className="proHint">Ovo je “tehnički sloj” — ne menja prestiž, samo ga dopunjuje.</div>
+              {/*<div className="proHint">Ovo je “tehnički sloj” — ne menja prestiž, samo ga dopunjuje.</div>*/}
             </div>
 
             <div className="proGrid">
@@ -431,10 +431,10 @@ export default function NagradeIstorijaPage() {
             />
             <Spotlight
               icon="🧱"
-              title="STUB"
-              subtitle="Najmanje primljenih golova"
-              value={yearCard.core.stub.winners.length ? String(yearCard.core.stub.min) : "—"}
-              label="primljenih"
+              title="Stub odbrane"
+              subtitle="Najmanje primljenih golova po meču"
+              value={yearCard.core.stub.winners.length ? String(yearCard.core.stub.minRate) : "—"}
+              label="PG/meč"
               winners={yearCard.core.stub.winners}
             />
           </div>
@@ -453,7 +453,7 @@ export default function NagradeIstorijaPage() {
           <div key={`${c.period.year}-${c.period.month}`} className="month">
             <div className="monthTop">
               <div className="monthLabel">{monthLabelSR(c.period)}</div>
-              <div className="monthCount">{c.matchCount} meča</div>
+              <div className="monthCount">{c.matchCount} mečeva</div>
             </div>
 
             <div className="monthRows">

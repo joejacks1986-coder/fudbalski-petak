@@ -1,0 +1,83 @@
+/* Background cinematic zoom */
+@keyframes bgZoom {
+  from { transform: scale(1); }
+  to { transform: scale(1.08); }
+}
+.bgZoom {
+  animation: bgZoom 7s ease-in-out forwards;
+  will-change: transform;
+}
+
+/* Light breathing effect */
+@keyframes lightsPulse {
+  0%, 100% { opacity: 0.10; }
+  50% { opacity: 0.18; }
+}
+.lights {
+  background:
+    radial-gradient(circle at 20% 15%, rgba(255,255,255,0.55), transparent 35%),
+    radial-gradient(circle at 80% 18%, rgba(255,255,255,0.45), transparent 38%);
+  mix-blend-mode: screen;
+  animation: lightsPulse 2.4s ease-in-out infinite;
+  filter: blur(2px);
+}
+
+/* Triptih entrance (scale/blur/opacity only) */
+@keyframes kickIn {
+  0% { opacity: 0; transform: scale(0.985); filter: blur(2px); }
+  100% { opacity: 0.82; transform: scale(1); filter: blur(0px); }
+}
+.kickIn {
+  animation: kickIn 900ms ease-out forwards;
+  animation-delay: 900ms;
+  will-change: transform, opacity, filter;
+}
+
+/* ✅ Drift ONLY on Y axis (no centering math here) */
+@keyframes driftY {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+.driftY {
+  animation: driftY 3.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Flash impact */
+@keyframes flash {
+  0% { opacity: 0; }
+  10% { opacity: 0.75; }
+  25% { opacity: 0; }
+  100% { opacity: 0; }
+}
+.flash {
+  background: white;
+  opacity: 0;
+  animation: flash 450ms ease-out forwards;
+  animation-delay: 2850ms;
+}
+
+/* Logo reveal */
+@keyframes logoReveal {
+  0% { opacity: 0; transform: scale(0.98); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.logo {
+  opacity: 0;
+  animation: logoReveal 900ms ease-out forwards;
+  animation-delay: 3300ms;
+  will-change: transform, opacity;
+}
+
+/* Fade-out ka dnu (sakriva oštru ivicu) */
+.softBottom {
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 72%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 0%, black 72%, transparent 100%);
+}
+@keyframes fadeOut {
+  0%, 85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.fadeOut {
+  animation: fadeOut 7s ease forwards;
+}

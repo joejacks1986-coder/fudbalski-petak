@@ -139,12 +139,17 @@ rowGap: 28,
 
 
         .player-avatar {
-          border-radius: 50%;
-          object-fit: cover;
-          border: 3px solid rgba(255,255,255,0.9);
-          box-shadow: 0 10px 24px rgba(0,0,0,0.10);
-          background: #f4f4f4;
-        }
+  width: 140px;
+  height: 140px;
+  display: block;
+  margin: 0 auto;
+
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(255,255,255,0.9);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.10);
+  background: #f4f4f4;
+}
 
         .player-name {
           font-weight: 950;

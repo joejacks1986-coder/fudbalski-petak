@@ -24,6 +24,20 @@ export async function proxy(req: NextRequest) {
 
   const pathname = req.nextUrl.pathname;
 
+  // =====================
+  // KICKOFF GATE (1x per session)
+  // =====================
+  // Next.js v16 uses proxy.ts instead of middleware.ts.
+  // We gate only the home route and only if the session cookie isn't set.
+  if (pathname === "/") {
+    const seenKickoff = req.cookies.get("seenKickoff")?.value;
+    if (seenKickoff !== "1") {
+      const url = req.nextUrl.clone();
+      url.pathname = "/kickoff";
+      return NextResponse.redirect(url);
+    }
+  }
+
   // pusti login
   if (pathname.startsWith("/admin/login")) return res;
 
@@ -41,5 +55,6 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  // Run on home (for KickoffGate) and on admin routes (for auth).
+  matcher: ["/", "/admin/:path*"],
 };

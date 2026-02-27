@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+/* Vrati tipografiju na isti izgled kao u produkciji (browser default/Times) */
+html, body {
+  font-family: "Times New Roman", Times, serif;
+  line-height: normal;
+}
+
+/* (ostaje korisno za slike) */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}

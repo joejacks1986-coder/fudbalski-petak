@@ -410,9 +410,9 @@ export default function NagradePage() {
               isYear={isYear}
             />
             <SmallAwardCard
-              title="🧱 STUB"
-              value={awards.stub.winners.length ? awards.stub.min : null}
-              label="primljenih"
+              title="🧱 Stub odbrane"
+              value={awards.stub.winners.length ? awards.stub.minRate : null}
+              label="PG/meč"
               winners={awards.stub.winners}
               isYear={isYear}
             />

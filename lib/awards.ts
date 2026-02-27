@@ -367,42 +367,50 @@ export function computeAwards(opts: {
         })();
 
   // ✅ STUB (least conceded goals) — min eff
-  const concededAcc = new Map<string, { base: Winner; played: number; conceded: number }>();
+ // ✅ STUB (least conceded goals per match) — min eff
+const concededAcc = new Map<string, { base: Winner; played: number; conceded: number }>();
 
-  for (const tr of teams) {
-    if (!tr.player_id) continue;
-    if (!matchIdSet.has(tr.match_id)) continue;
-    if (!isPublic(tr.players)) continue;
+for (const tr of teams) {
+  if (!tr.player_id) continue;
+  if (!matchIdSet.has(tr.match_id)) continue;
+  if (!isPublic(tr.players)) continue;
 
-    const m = matchById.get(tr.match_id);
-    if (!m) continue;
+  const m = matchById.get(tr.match_id);
+  if (!m) continue;
 
-    const conceded = tr.team === "A" ? m.away_score : m.home_score;
-    const base: Winner = { ...lite(tr.players!), value: 0 };
+  const conceded = tr.team === "A" ? m.away_score : m.home_score;
+  const base: Winner = { ...lite(tr.players!), value: 0 };
 
-    const cur = concededAcc.get(tr.player_id) || { base, played: 0, conceded: 0 };
-    cur.played += 1;
-    cur.conceded += conceded;
-    concededAcc.set(tr.player_id, cur);
-  }
+  const cur = concededAcc.get(tr.player_id) || { base, played: 0, conceded: 0 };
+  cur.played += 1;
+  cur.conceded += conceded;
+  concededAcc.set(tr.player_id, cur);
+}
 
-  const concededCandidates = Array.from(concededAcc.values()).filter((x) => x.played >= MIN_EFF);
+const concededCandidates = Array.from(concededAcc.values()).filter((x) => x.played >= MIN_EFF);
 
-  const awardStub =
-    concededCandidates.length === 0
-      ? { min: 0, winners: [] as Winner[] }
-      : (() => {
-          const min = Math.min(...concededCandidates.map((x) => x.conceded));
-          const winners = concededCandidates
-            .filter((x) => x.conceded === min)
-            .sort((a, b) => a.base.name.localeCompare(b.base.name, "sr"))
-            .map((x) => ({
-              ...x.base,
-              value: x.conceded,
-              extra: `${x.conceded} primljenih • ${x.played} meča`,
-            }));
-          return { min, winners };
-        })();
+const awardStub =
+  concededCandidates.length === 0
+    ? { minRate: 0, winners: [] as Winner[] }
+    : (() => {
+        const withRate = concededCandidates.map((x) => ({
+          ...x,
+          rate: x.conceded / x.played,
+        }));
+
+        const minRate = Math.min(...withRate.map((x) => x.rate));
+
+        const winners = withRate
+          .filter((x) => x.rate === minRate)
+          .sort((a, b) => a.base.name.localeCompare(b.base.name, "sr"))
+          .map((x) => ({
+            ...x.base,
+            value: x.rate, // ⬅️ sad je value = primljeni/meč
+            extra: `${x.conceded} primljenih / ${x.played} meča`,
+          }));
+
+        return { minRate, winners };
+      })();
 
   return {
     goals: toWinners(goals),
