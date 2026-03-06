@@ -1,7 +1,7 @@
 // app/(gate)/kickoff/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./kickoff.module.css";
 
@@ -9,54 +9,53 @@ export default function KickoffPage() {
   const router = useRouter();
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Lista tvojih zvukova (svi u public/assets/kickoff/)
-  const tracks = useMemo(
-    () => [
+  useEffect(() => {
+    // session cookie da proxy ne vraća ponovo na kickoff u istoj sesiji
+    document.cookie = "seenKickoff=1; path=/";
+
+    const tracks = [
       "/assets/kickoff/crowd.mp3",
       "/assets/kickoff/flo-friday.mp3",
       "/assets/kickoff/gru-petak.mp3",
       "/assets/kickoff/icecube-friday.mp3",
       "/assets/kickoff/metak-petak.mp3",
       "/assets/kickoff/mufasa-friday.mp3",
-    ],
-    []
-  );
+    ];
 
-  // Random izbor (ne ponavlja isti zvuk zaredom u istoj sesiji)
-  const [audioSrc] = useState(() => {
+    // ne ponavljaj isti audio dva puta zaredom
+    let pick = tracks[Math.floor(Math.random() * tracks.length)];
     try {
       const last = sessionStorage.getItem("kickoffAudioLast");
-      const pool = tracks.filter((t) => t !== last);
-      const pickFrom = pool.length ? pool : tracks;
-      const pick = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+      const pool = tracks.filter((track) => track !== last);
+      const pickFrom = pool.length > 0 ? pool : tracks;
+      pick = pickFrom[Math.floor(Math.random() * pickFrom.length)];
       sessionStorage.setItem("kickoffAudioLast", pick);
-      return pick;
     } catch {
-      // ako sessionStorage nije dostupan iz bilo kog razloga
-      return tracks[Math.floor(Math.random() * tracks.length)];
+      // ignore
     }
-  });
 
-  useEffect(() => {
-    // ✅ Set session cookie so proxy won't redirect again this session
-    document.cookie = "seenKickoff=1; path=/";
-
-    // start audio immediately (mp3 has its own fade/peak)
     const a = audioRef.current;
     if (a) {
-      a.volume = 0.9;
+      a.pause();
       a.currentTime = 0;
+      a.volume = 0.9;
+
+      // ✅ ključno: src postavljamo DIREKTNO ovde
+      a.src = pick;
       a.load();
       a.play().catch(() => {});
     }
 
-    // navigate after 7s
     const tGo = setTimeout(() => {
       router.push("/");
     }, 8000);
 
     return () => {
       clearTimeout(tGo);
+      if (a) {
+        a.pause();
+        a.currentTime = 0;
+      }
     };
   }, [router]);
 
@@ -64,7 +63,7 @@ export default function KickoffPage() {
     <div
       className={`fixed inset-0 z-[9999] overflow-hidden bg-black ${styles.fadeOut}`}
       onPointerDown={() => {
-        // fallback: if autoplay was blocked, first click/tap will start audio
+        // fallback ako autoplay bude blokiran
         audioRef.current?.play().catch(() => {});
       }}
     >
@@ -109,7 +108,6 @@ export default function KickoffPage() {
         className={`absolute inset-0 flex items-center justify-center pointer-events-none ${styles.logo}`}
       >
         <div className="text-center relative">
-          {/* subtle glow behind text */}
           <div
             className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 blur-2xl opacity-40"
             style={{
@@ -139,8 +137,8 @@ export default function KickoffPage() {
         Preskoči
       </button>
 
-      {/* ✅ Random audio */}
-      <audio ref={audioRef} src={audioSrc} preload="auto" />
+      {/* ✅ bez src u JSX-u */}
+      <audio ref={audioRef} preload="auto" />
     </div>
   );
 }
